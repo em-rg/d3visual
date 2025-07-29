@@ -1,0 +1,663 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Nobels, No Degrees — Inspired by Giorgia Lupi</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="nobel_data_converter.js"></script>
+  <style>
+    body {
+      font-family: 'Georgia', serif;
+      background-color: #f9f3e4;
+      margin: 40px;
+      color: #333;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 30px;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #5a2b21;
+    }
+
+    .subtitle {
+      font-size: 16px;
+      line-height: 1.5;
+      max-width: 600px;
+      margin-bottom: 20px;
+    }
+
+    .file-input-container {
+      margin: 20px 0;
+      padding: 15px;
+      background: #f5ede0;
+      border-radius: 4px;
+    }
+
+    svg {
+      width: 100%;
+      height: 800px;
+      overflow: visible;
+    }
+
+    .visualization-area {
+      position: relative;
+    }
+
+    .dot {
+      mix-blend-mode: multiply;
+    }
+
+    .label {
+      font-size: 14px;
+      font-weight: 500;
+      fill: #333;
+    }
+
+    .axis-label {
+      font-size: 12px;
+      fill: #666;
+    }
+
+    .legend-title {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .legend-item {
+      font-size: 12px;
+    }
+
+    .annotation {
+      font-size: 11px;
+      fill: #666;
+      font-style: italic;
+    }
+
+    .grid line {
+      stroke: #e5e5e5;
+      stroke-opacity: 0.7;
+      shape-rendering: crispEdges;
+    }
+
+    .connection-path {
+      fill: none;
+      stroke-opacity: 0.4;
+      mix-blend-mode: multiply;
+    }
+
+    .how-to-read {
+      background-color: #f5ede0;
+      padding: 20px;
+      border-radius: 4px;
+      margin-top: 40px;
+      font-size: 13px;
+      max-width: 700px;
+    }
+
+    .how-to-read h3 {
+      margin-top: 0;
+      font-size: 16px;
+      color: #5a2b21;
+    }
+
+    .how-to-read-item {
+      display: flex;
+      margin-bottom: 15px;
+      align-items: center;
+    }
+
+    .how-to-read-visual {
+      width: 50px;
+      flex-shrink: 0;
+      margin-right: 15px;
+      text-align: center;
+    }
+
+    .how-to-read-text {
+      flex-grow: 1;
+    }
+
+    .year-marker {
+      stroke: #999;
+      stroke-width: 1;
+      stroke-dasharray: 3,3;
+    }
+    
+    .stats-box {
+      margin-top: 30px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    
+    .stat-card {
+      background: #f5ede0;
+      padding: 15px;
+      border-radius: 4px;
+      text-align: center;
+    }
+    
+    .stat-number {
+      font-size: 24px;
+      font-weight: bold;
+      color: #5a2b21;
+    }
+    
+    .stat-label {
+      font-size: 13px;
+      margin-top: 5px;
+    }
+
+    /* Loading indicator */
+    .loading {
+      margin: 20px auto;
+      padding: 15px;
+      text-align: center;
+      font-style: italic;
+      font-size: 16px;
+      color: #5a2b21;
+      max-width: 400px;
+    }
+
+    /* Buttons */
+    button {
+      background-color: #5a2b21;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+
+    button:hover {
+      background-color: #7a3b31;
+    }
+
+    /* File input styling */
+    input[type="file"] {
+      margin: 10px 0;
+    }
+    
+    /* Tooltip styling */
+    .tooltip {
+      position: absolute;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      pointer-events: none;
+      font-size: 12px;
+      max-width: 300px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      z-index: 10;
+    }
+    
+    .tooltip h4 {
+      margin-top: 0;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+    
+    /* Time period focus areas */
+    .time-focus {
+      fill: #f5ede0;
+      stroke: #ccc;
+      stroke-width: 1;
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Nobels, no degrees</h1>
+      <div class="subtitle">
+        This visualization explores Nobel Prize winners and whether they had formal academic qualifications.
+        Each dot represents one Nobel laureate at the time they were awarded the prize.
+        Examining the patterns across different categories, geographical origins, and the historical development of the prizes.
+      </div>
+    </header>
+
+    <div class="loading" id="loading-indicator">Loading data and generating visualization...</div>
+
+    <div class="visualization-area">
+      <div id="tooltip-container" class="tooltip" style="display:none;"></div>
+      <svg id="viz"></svg>
+    </div>
+  </div>
+
+  <script>
+    // Dimensions and margins
+    const margin = { top: 80, right: 180, bottom: 80, left: 120 };
+    const width = 1100 - margin.left - margin.right;
+    const height = 700 - margin.top - margin.bottom;
+
+    // Create SVG container but don't populate it yet
+    const svg = d3.select("#viz")
+      .attr("width", width + margin.left + margin.right)
+      .attr("height", height + margin.top + margin.bottom);
+      
+    const mainGroup = svg.append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // Define colors for categories with Giorgia Lupi-inspired color palette
+    const categoryColors = {
+      "Chemistry": "#D73027",
+      "Economics": "#4575B4", 
+      "Physics": "#1A9850",
+      "Literature": "#FDAE61",
+      "Medicine": "#984EA3",
+      "Peace": "#FB9A99"
+    };
+
+    // Categories ordered as in the visualization
+    const categories = ["Chemistry", "Economics", "Physics", "Literature", "Medicine", "Peace"];
+
+    // Setup tooltip
+    const tooltip = d3.select("#tooltip-container");
+    
+    // Function to create the visualization
+    function createVisualization(data) {
+      // Clear any existing visualization
+      mainGroup.selectAll("*").remove();
+      
+      // Show loading indicator
+      document.getElementById("loading-indicator").style.display = "block";
+      
+      // Process data if needed
+      let processedData = data;
+      if (!processedData[0].hasOwnProperty('degree')) {
+        // This means we need to process the data
+        if (typeof processNobelData === 'function') {
+          processedData = processNobelData(data);
+        }
+      }
+      
+      // Filter out any rows with missing essential data
+      processedData = processedData.filter(d => d.year && d.category);
+
+      // Create scales
+      const xScale = d3.scaleLinear()
+        .domain([1900, 2025])
+        .range([0, width]);
+
+      const yScale = d3.scalePoint()
+        .domain(categories)
+        .range([0, height])
+        .padding(1);
+        
+      // Add time period focus areas (World Wars, Cold War, etc.)
+      const timePeriods = [
+        { name: "World War I", start: 1914, end: 1918 },
+        { name: "World War II", start: 1939, end: 1945 },
+        { name: "Cold War", start: 1947, end: 1991 }
+      ];
+      
+      mainGroup.selectAll(".time-focus")
+        .data(timePeriods)
+        .enter()
+        .append("rect")
+        .attr("class", "time-focus")
+        .attr("x", d => xScale(d.start))
+        .attr("y", 0 - 20)
+        .attr("width", d => xScale(d.end) - xScale(d.start))
+        .attr("height", height + 40)
+        .attr("opacity", 0.1);
+        
+      mainGroup.selectAll(".time-period-label")
+        .data(timePeriods)
+        .enter()
+        .append("text")
+        .attr("class", "annotation")
+        .attr("x", d => xScale(d.start) + (xScale(d.end) - xScale(d.start))/2)
+        .attr("y", -5)
+        .attr("text-anchor", "middle")
+        .text(d => d.name);
+
+      // Create grid lines
+      // Vertical grid lines for decades
+      const decades = d3.range(1900, 2030, 10);
+      mainGroup.selectAll(".decade-line")
+        .data(decades)
+        .enter()
+        .append("line")
+        .attr("class", "grid decade-line")
+        .attr("x1", d => xScale(d))
+        .attr("y1", -10)
+        .attr("x2", d => xScale(d))
+        .attr("y2", height + 10)
+        .attr("stroke", "#e0e0e0")
+        .attr("stroke-width", d => d % 50 === 0 ? 1 : 0.5);
+      
+      // Add year labels for significant decades
+      mainGroup.selectAll(".decade-label")
+        .data(decades.filter(d => d % 20 === 0))
+        .enter()
+        .append("text")
+        .attr("class", "axis-label decade-label")
+        .attr("x", d => xScale(d))
+        .attr("y", height + 30)
+        .attr("text-anchor", "middle")
+        .text(d => d);
+
+      // Horizontal category lines
+      mainGroup.selectAll(".category-line")
+        .data(categories)
+        .enter()
+        .append("line")
+        .attr("class", "grid category-line")
+        .attr("x1", -10)
+        .attr("y1", d => yScale(d))
+        .attr("x2", width + 10)
+        .attr("y2", d => yScale(d))
+        .attr("stroke", "#e0e0e0")
+        .attr("stroke-width", 0.5);
+
+      // Category labels
+      mainGroup.selectAll(".category-label")
+        .data(categories)
+        .enter()
+        .append("text")
+        .attr("class", "label category-label")
+        .attr("x", -15)
+        .attr("y", d => yScale(d))
+        .attr("text-anchor", "end")
+        .attr("dominant-baseline", "middle")
+        .text(d => d)
+        .style("fill", d => categoryColors[d]);
+
+      // Add jitter function to create more organic, hand-drawn look
+      const jitter = (category) => {
+        // Different jitter amounts for different categories
+        const jitterAmount = {
+          "Chemistry": 15,
+          "Economics": 15,
+          "Physics": 15,
+          "Literature": 15,
+          "Medicine": 15,
+          "Peace": 15
+        };
+        
+        return (Math.random() - 0.5) * jitterAmount[category];
+      };
+
+      // Draw the dots with more Giorgia Lupi-like styling
+      mainGroup.selectAll(".dot")
+        .data(processedData)
+        .enter()
+        .append("circle")
+        .attr("class", "dot")
+        .attr("cx", d => xScale(d.year))
+        .attr("cy", d => yScale(d.category) + jitter(d.category))
+        .attr("r", 5)
+        .attr("fill", d => {
+          if (d.degree === "degree") return categoryColors[d.category];
+          else if (d.degree === "no degree") return "#f9f3e4"; // Background color for no degree
+          else return "#e0e0e0"; // Gray for unknown
+        })
+        .attr("stroke", d => categoryColors[d.category])
+        .attr("stroke-width", d => d.degree === "no degree" ? 1.5 : 0.8)
+        .attr("stroke-dasharray", d => d.degree === "no degree" ? "2,2" : "none")
+        .attr("opacity", 0.85)
+        .on("mouseover", function(event, d) {
+          // Highlight this dot
+          d3.select(this)
+            .attr("stroke-width", 3)
+            .attr("r", 7);
+            
+          // Show tooltip
+          tooltip.style("display", "block")
+            .style("left", (event.pageX + 10) + "px")
+            .style("top", (event.pageY - 10) + "px");
+            
+          let tooltipContent = `
+            <h4>${d.full_name || d.name || "Unknown"} (${d.year})</h4>
+            <strong>Category:</strong> ${d.category}<br>
+            <strong>Country:</strong> ${d.birth_country || "Unknown"}<br>
+          `;
+          
+          if (d.organization_name && d.organization_name !== "NA") {
+            tooltipContent += `<strong>Organization:</strong> ${d.organization_name}<br>`;
+          }
+          
+          tooltipContent += `<strong>Degree:</strong> ${d.degree}<br>`;
+          
+          if (d.motivation && d.motivation !== "NA") {
+            tooltipContent += `<br><em>${d.motivation.replace(/"/g, '')}</em>`;
+          }
+          
+          tooltip.html(tooltipContent);
+        })
+        .on("mouseout", function() {
+          // Reset highlight
+          d3.select(this)
+            .attr("stroke-width", d => d.degree === "no degree" ? 1.5 : 0.8)
+            .attr("r", 5);
+            
+          // Hide tooltip
+          tooltip.style("display", "none");
+        });
+
+      // Create connections between institutions with same disciplines
+      // Group data by organization
+      const organizationGroups = d3.group(
+        processedData.filter(d => d.organization_name && d.organization_name !== "NA"), 
+        d => d.organization_name
+      );
+      
+      // Filter for organizations with multiple laureates
+      const significantOrgs = Array.from(organizationGroups)
+        .filter(([_, laureates]) => laureates.length > 2)
+        .map(([name, laureates]) => ({
+          name,
+          laureates,
+          categories: [...new Set(laureates.map(d => d.category))]
+        }));
+        
+      // Draw connections for major institutions
+      const connectionGroup = mainGroup.append("g")
+        .attr("class", "connections");
+        
+      significantOrgs.forEach(org => {
+        // Sort laureates by year
+        const sortedLaureates = org.laureates.sort((a, b) => a.year - b.year);
+        
+        // Only connect laureates if they're not too far apart in time
+        for (let i = 0; i < sortedLaureates.length - 1; i++) {
+          const a = sortedLaureates[i];
+          const b = sortedLaureates[i + 1];
+          
+          // Only connect if less than 30 years apart and same category
+          if (b.year - a.year <= 30 && a.category === b.category) {
+            connectionGroup.append("path")
+              .attr("class", "connection-path")
+              .attr("d", () => {
+                const x1 = xScale(a.year);
+                const y1 = yScale(a.category) + jitter(a.category);
+                const x2 = xScale(b.year);
+                const y2 = yScale(b.category) + jitter(b.category);
+                const midX = (x1 + x2) / 2;
+                const curve = Math.min(50, Math.abs(x2 - x1) / 2);
+                const bend = (Math.random() > 0.5 ? -1 : 1) * curve;
+                
+                return `M ${x1},${y1} Q ${midX},${y1 + bend} ${x2},${y2}`;
+              })
+              .attr("stroke", categoryColors[a.category])
+              .attr("stroke-width", 1)
+              .attr("opacity", 0.3);
+          }
+        }
+      });
+
+      // Legend for degree types
+      const legendData = [
+        { type: "Degree", display: "degree" },
+        { type: "No Degree", display: "no degree" },
+        { type: "Unknown", display: "unknown" }
+      ];
+
+      const legend = mainGroup.append("g")
+        .attr("class", "legend")
+        .attr("transform", `translate(${width + 20}, 0)`);
+
+      // Legend title
+      legend.append("text")
+        .attr("class", "legend-title")
+        .attr("x", 0)
+        .attr("y", -10)
+        .text("Academic Qualification");
+
+      // Legend items for degree types
+      const legendItems = legend.selectAll(".legend-degree-item")
+        .data(legendData)
+        .enter()
+        .append("g")
+        .attr("class", "legend-item")
+        .attr("transform", (d, i) => `translate(0, ${i * 25 + 10})`);
+
+      legendItems.append("circle")
+        .attr("r", 5)
+        .attr("fill", d => {
+          if (d.display === "degree") return "#555";
+          else if (d.display === "no degree") return "#f9f3e4";
+          else return "#e0e0e0";
+        })
+        .attr("stroke", "#555")
+        .attr("stroke-width", d => d.display === "no degree" ? 1.5 : 0.8)
+        .attr("stroke-dasharray", d => d.display === "no degree" ? "2,2" : "none");
+
+      legendItems.append("text")
+        .attr("x", 15)
+        .attr("y", 4)
+        .text(d => d.type);
+
+      // Legend for categories
+      legend.append("text")
+        .attr("class", "legend-title")
+        .attr("x", 0)
+        .attr("y", 100)
+        .text("Prize Categories");
+
+      const categoryLegend = legend.selectAll(".legend-category-item")
+        .data(categories)
+        .enter()
+        .append("g")
+        .attr("class", "legend-item")
+        .attr("transform", (d, i) => `translate(0, ${i * 25 + 120})`);
+
+      categoryLegend.append("circle")
+        .attr("r", 5)
+        .attr("fill", d => categoryColors[d]);
+
+      categoryLegend.append("text")
+        .attr("x", 15)
+        .attr("y", 4)
+        .text(d => d);
+
+      // Annotations
+      mainGroup.append("text")
+        .attr("class", "annotation")
+        .attr("x", xScale(1969))
+        .attr("y", yScale("Economics") - 25)
+        .attr("text-anchor", "middle")
+        .text("Economics prize first awarded in 1969");
+
+      // Add connecting line to economics annotation
+      mainGroup.append("line")
+        .attr("x1", xScale(1969))
+        .attr("y1", yScale("Economics") - 10)
+        .attr("x2", xScale(1969))
+        .attr("y2", yScale("Economics") - 3)
+        .attr("stroke", "#999")
+        .attr("stroke-width", 1)
+        .attr("stroke-dasharray", "3,3");
+        
+      // Add title for the visualization in Giorgia Lupi style
+      svg.append("text")
+        .attr("x", margin.left)
+        .attr("y", 30)
+        .attr("class", "title")
+        .style("font-size", "24px")
+        .style("font-weight", "bold")
+        .style("fill", "#5a2b21")
+        .text("NOBELS, NO DEGREES");
+        
+      svg.append("text")
+        .attr("x", margin.left)
+        .attr("y", 55)
+        .attr("class", "subtitle")
+        .style("font-size", "14px")
+        .style("font-weight", "normal")
+        .style("fill", "#666")
+        .text("The relationship between formal education and exceptional achievement");
+        
+      // Hide loading indicator
+      document.getElementById("loading-indicator").style.display = "none";
+    }
+    
+    // Sample data generator function when we don't have the real data
+    function generateSampleData() {
+      const sampleData = [];
+      const startYear = 1901;
+      const endYear = 2023;
+      
+      // For each category, generate a reasonable number of winners per year
+      categories.forEach(category => {
+        // Economics only starts in 1969
+        const categoryStartYear = category === "Economics" ? 1969 : startYear;
+        
+        for (let year = categoryStartYear; year <= endYear; year++) {
+          // Determine number of winners for this year and category (usually 1-3)
+          const numWinners = Math.floor(Math.random() * 3) + 1;
+          
+          for (let i = 0; i < numWinners; i++) {
+            sampleData.push({
+              year: year,
+              category: category,
+              prize: `The Nobel Prize in ${category} ${year}`,
+              full_name: `Laureate ${Math.floor(Math.random() * 1000)}`,
+              birth_country: ["United States", "Germany", "United Kingdom", "France", "Japan"][Math.floor(Math.random() * 5)],
+              sex: Math.random() > 0.85 ? "Female" : "Male", // Historical gender imbalance
+              organization_name: ["University of California", "Harvard University", "University of Cambridge", 
+                                 "Max Planck Institute", "University of Tokyo"][Math.floor(Math.random() * 5)],
+              // Assign degree status
+              degree: Math.random() > 0.25 ? "degree" : Math.random() > 0.5 ? "no degree" : "unknown"
+            });
+          }
+        }
+      });
+      
+      return sampleData;
+    }
+
+    // Directly generate sample data
+    const sampleData = generateSampleData();
+    createVisualization(sampleData);
+    
+    // Check if we have embedded data from the CSV file
+    if (typeof d3 !== 'undefined') {
+      d3.csv("nobel.csv").then(data => {
+        if (data && data.length > 0) {
+          createVisualization(data);
+        }
+      }).catch(error => {
+        console.log("CSV file not found or error loading it:", error);
+        // If no CSV file is available, we can start with an empty visualization
+        // or the user can load data using the file input
+      });
+    }
+  </script>
+</body>
+</html>
